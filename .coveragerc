@@ -1,0 +1,6 @@
+[run]
+branch = True
+source = networking_zte
+
+[report]
+ignore_errors = True
