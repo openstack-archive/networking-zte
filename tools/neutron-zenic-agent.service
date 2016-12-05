@@ -1,0 +1,12 @@
+[Unit]
+Description=OpenStack Neutron Zenic Layer 3 Agent
+After=syslog.target network.target
+
+[Service]
+Type=simple
+User=neutron
+ExecStart=/usr/bin/neutron-zenic-agent --log-file /var/log/neutron/zenic-agent.log
+PrivateTmp=false
+
+[Install]
+WantedBy=multi-user.target
