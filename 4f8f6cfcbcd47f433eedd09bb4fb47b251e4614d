@@ -1,0 +1,9 @@
+Code-Review+1: erocjiang <erocjiang@gmail.com>
+Code-Review+2: kyle liu <liu.hui58@zte.com.cn>
+Workflow+1: kyle liu <liu.hui58@zte.com.cn>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Mon, 05 Dec 2016 01:35:18 +0000
+Reviewed-on: https://review.openstack.org/404597
+Project: openstack/networking-zte
+Branch: refs/heads/master
