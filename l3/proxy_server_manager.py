@@ -39,11 +39,14 @@ import socket
 import ssl
 
 import eventlet
-from oslo.config import cfg
-
+try:
+    from oslo.config import cfg
+    from oslo.utils import excutils
+except Exception:
+    from oslo_config import cfg
+    from oslo_utils import excutils
 from neutron.common import exceptions
 from neutron.common import utils
-from oslo.utils import excutils
 from oslo_log import log
 
 LOG = log.getLogger(__name__)
