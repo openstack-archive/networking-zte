@@ -1,0 +1,103 @@
+--- zenic_qos_plugin.py	2018-01-06 02:12:23.000000000 +0800
++++ zenic_qos_plugin.py.new	2017-04-10 17:58:13.478375866 +0800
+@@ -18,14 +18,7 @@ try:
+     from neutron_lib import exceptions
+ except Exception:
+     from neutron.common import exceptions
+-try:
+-    from neutron.services.qos.qos_plugin import QoSPlugin
+-except Exception:
+-    pass
+-try:
+-    from neutron.objects.qos import rule as rule_object
+-except Exception:
+-    pass
++from neutron.services.qos.qos_plugin import QoSPlugin
+ from oslo_config import cfg
+ from oslo_log import log as logging
+
+@@ -142,16 +135,15 @@ class ZenicQoSPlugin(QoSPlugin):
+                                            bandwidth_limit_rule):
+         LOG.info(_("create_policy_bandwidth_limit_rule1 rule= %s"),
+                  bandwidth_limit_rule)
+-        rule_cls = rule_object.QosBandwidthLimitRule
+-        rule = super(ZenicQoSPlugin, self).create_policy_rule(
+-            context, rule_cls, policy_id, bandwidth_limit_rule)
++        rule = super(ZenicQoSPlugin, self).create_policy_bandwidth_limit_rule(
++            context, policy_id, bandwidth_limit_rule)
+         LOG.info(_("create_policy_bandwidth_limit_rule2 rule= %s"), rule)
+         try:
+             self.servers.create_policy_bandwidth_limit_rule(context,
+                                                             policy_id, rule)
+         except BaseException:
+-            super(ZenicQoSPlugin, self).delete_policy_rule(
+-                context, rule_cls, rule['id'], policy_id)
++            super(ZenicQoSPlugin, self).delete_policy_bandwidth_limit_rule(
++                context, rule['id'], policy_id)
+             raise PostZenicRestError(
+                 reason="create bandwidth limit rule of qos policy!")
+         return rule
+@@ -166,9 +158,8 @@ class ZenicQoSPlugin(QoSPlugin):
+         except BaseException:
+             raise PostZenicRestError(
+                 reason="update bandwidth limit rule of qos policy!")
+-        rule_cls = rule_object.QosBandwidthLimitRule
+-        rule = super(ZenicQoSPlugin, self).update_policy_rule(
+-            context, rule_cls, rule_id, policy_id, bandwidth_limit_rule)
++        rule = super(ZenicQoSPlugin, self).update_policy_bandwidth_limit_rule(
++            context, rule_id, policy_id, bandwidth_limit_rule)
+         return rule
+
+     def delete_policy_bandwidth_limit_rule(self, context, rule_id, policy_id):
+@@ -181,24 +172,22 @@ class ZenicQoSPlugin(QoSPlugin):
+         except BaseException:
+             raise PostZenicRestError(
+                 reason="delete bandwidth limit rule of qos policy!")
+-        rule_cls = rule_object.QosBandwidthLimitRule
+-        super(ZenicQoSPlugin, self).delete_policy_rule(
+-            context, rule_cls, rule_id, policy_id)
++        super(ZenicQoSPlugin, self).delete_policy_bandwidth_limit_rule(
++            context, rule_id, policy_id)
+
+     def create_policy_dscp_marking_rule(self, context, policy_id,
+                                         dscp_marking_rule):
+         LOG.info(_("create_policy_dscp_marking_rule1 rule= %s"),
+                 dscp_marking_rule)
+-        rule_cls = rule_object.QosDscpMarkingRule
+-        rule = super(ZenicQoSPlugin, self).create_policy_rule(
+-            context, rule_cls, policy_id, dscp_marking_rule)
++        rule = super(ZenicQoSPlugin, self).create_policy_dscp_marking_rule(
++            context, policy_id, dscp_marking_rule)
+         LOG.info(_("create_policy_dscp_marking_rule2 rule= %s"), rule)
+         try:
+             self.servers.create_policy_dscp_marking_rule(context,
+                                                      policy_id, rule)
+         except BaseException:
+-            super(ZenicQoSPlugin, self).delete_policy_rule(
+-                context, rule_cls, rule['id'], policy_id)
++            super(ZenicQoSPlugin, self).delete_policy_dscp_marking_rule(
++                context, rule['id'], policy_id)
+             raise PostZenicRestError(
+                 reason="create dscp marking rule of qos policy!")
+         return rule
+@@ -213,9 +202,8 @@ class ZenicQoSPlugin(QoSPlugin):
+         except BaseException:
+             raise PostZenicRestError(
+                 reason="update dscp marking rule of qos policy!")
+-        rule_cls = rule_object.QosDscpMarkingRule
+-        rule = super(ZenicQoSPlugin, self).update_policy_rule(
+-            context, rule_cls, rule_id, policy_id, dscp_marking_rule)
++        rule = super(ZenicQoSPlugin, self).update_policy_dscp_marking_rule(
++            context, rule_id, policy_id, dscp_marking_rule)
+         return rule
+
+     def delete_policy_dscp_marking_rule(self, context, rule_id, policy_id):
+@@ -228,6 +216,5 @@ class ZenicQoSPlugin(QoSPlugin):
+         except BaseException:
+             raise PostZenicRestError(
+                 reason="delete dscp marking rule of qos policy!")
+-        rule_cls = rule_object.QosDscpMarkingRule
+-        super(ZenicQoSPlugin, self).delete_policy_rule(
+-            context, rule_cls, rule_id, policy_id)
++        super(ZenicQoSPlugin, self).delete_policy_dscp_marking_rule(
++            context, rule_id, policy_id)
