@@ -1,0 +1,9 @@
+Code-Review+1: Manik Bindlish <manikbindlish19@gmail.com>
+Code-Review+2: kyle liu <liu.hui58@zte.com.cn>
+Workflow+1: kyle liu <liu.hui58@zte.com.cn>
+Verified+2: Zuul
+Submitted-by: Zuul
+Submitted-at: Mon, 04 Mar 2019 06:58:46 +0000
+Reviewed-on: https://review.openstack.org/618261
+Project: openstack/networking-zte
+Branch: refs/heads/master
