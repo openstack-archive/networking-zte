@@ -1,0 +1,11 @@
+--- /home/1.py	2016-10-03 04:37:07.402624132 +0800
++++ /home/2.py	2016-10-03 04:37:26.029623053 +0800
+@@ -53,7 +53,7 @@
+     l3_dvr_db.L3_NAT_with_dvr_db_mixin, and extraroute_db.ExtraRoute_db_mixin.
+     """
+     supported_extension_aliases = ["dvr", "router", "ext-gw-mode",
+-                                   "extraroute", "l3_agent_scheduler",
++                                   "extraroute", 
+                                    "l3-ha", "router_availability_zone"]
+ 
+     @resource_registry.tracked_resources(router=l3_db.Router,
