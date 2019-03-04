@@ -1,5 +1,5 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
-# Copyright 2014 Big Switch Networks, Inc.
+# Copyright 2017 ZTE, Inc.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -31,18 +31,23 @@ The following functionality is handled by this module:
 import base64
 import eventlet
 import httplib
+import json
 import os
+import re
 import socket
 import ssl
 
-from oslo_config import cfg
 from oslo_log import log
 from oslo_serialization import jsonutils
-
-from neutron.common import exceptions
-from neutron.i18n import _LE
-from neutron.i18n import _LI
-from neutron.i18n import _LW
+try:
+    from oslo.config import cfg
+except Exception:
+    from oslo_config import cfg
+try:
+    from neutron._i18n import _
+    from neutron_lib import exceptions
+except Exception:
+    from neutron.common import exceptions
 
 LOG = log.getLogger(__name__)
 
@@ -50,6 +55,15 @@ TOPOLOGY_PATH = "/topology"
 SUCCESS_CODES = range(200, 207)
 FAILURE_CODES = [301, 302, 303]
 BASE_URI = '/'
+response_code = {
+    'OK': 200,
+    'OK_1': 204,
+    'Bad_Request': 400,
+    'Unauthorized': 401,
+    'Forbidden': 403,
+    'Not_Found': 404,
+    'Conflict': 409,
+}
 
 
 class RemoteRestError(exceptions.NeutronException):
@@ -75,14 +89,86 @@ class ServerProxy(object):
         self.timeout = timeout
         self.name = name
         self.success_codes = success_codes
-        self.auth = None
+        self.auth = auth
         self.failed = False
         self.capabilities = []
-        # cache connection here to avoid a SSL handshake for every connection
-        # self.currentconn = None
-        if auth:
-            self.auth = 'Basic ' + base64.encodestring(auth).strip()
+        self.currentconn = None
+        self.header = {
+            "Accept": "application/json",
+            "Content-Type": "application/json"}
         self.combined_cert = combined_cert
+        self.auth_type = self.get_auth_type()
+
+        self.username, self.password = re.split(':', self.auth)
+
+        if self.auth_type == "BASE64":
+            self.auth = "Basic " + \
+                base64.b64encode("%s:%s" % (self.username, self.password))
+        elif self.auth_type == "AES":
+            encrypt_pwd = self.add_aes_encryption(self.password)
+            self.auth = "Basic " + \
+                base64.b64encode("%s:%s" % (self.username, encrypt_pwd))
+            LOG.debug('after base64enc auth=%s' % "****")
+
+        if self.auth is not None:
+            self.header["Authorization"] = self.auth
+            self.header["Realm"] = 'ZENIC'
+
+    def get_auth_type(self):
+        url = '/rest/v1/security/encryption'
+        method = "GET"
+        body = None
+        r = self.send_http_request(method, url, body)
+        if r:
+            jsn = json.loads(r)
+            enc = jsn['content']
+            return enc
+        else:
+            return ""
+
+    def send_http_request(self, method="", url="", body=(), trans=False):
+        if self.ssl and not self.combined_cert:
+            http = HTTPSConnectionWithValidation(self.server, self.port)
+        else:
+            http = httplib.HTTPConnection(self.server, self.port)
+        if trans:
+            payload = body
+        else:
+            if body:
+                payload = json.dumps(body)
+            else:
+                payload = None
+
+        LOG.debug('servermanager send_http_request, method=%s,header=%s, '
+                  'url=%s,payload=%s' % (method, self.header, url, "****"))
+        http.request(method, url, payload, self.header)
+        res = http.getresponse()
+        data = res.read()
+        LOG.info(_(
+            'servermanager send_http_request --ret code=%s ---'),
+            res.status)
+        if (res.status not in (response_code['OK'], response_code['OK_1'])):
+            if res.status == 404:
+                LOG.debug(
+                    'servermanager send_http_request finished, '
+                    'res code=%s, but get none data' % res.status)
+            else:
+                LOG.error(_(
+                    'servermanager send_http_request failed, res code=%('
+                    'code)s, reason=%(data)s'), {'code': res.status,
+                                                 'data': data})
+            return None
+        LOG.info(_('servermanager send_http_request --ret data=%s ---'),
+                 "****")
+
+        return data
+
+    def add_aes_encryption(self, pwd=""):
+        url = '/rest/v1/security/encrypt/AES'
+        method = "POST"
+        body = 'pwd=%s' % pwd
+        r = self.send_http_request(method, url, body, True)
+        return r
 
     def rest_call(self, action, resource, data='', headers={}, timeout=False,
                   reconnect=False):
@@ -98,27 +184,27 @@ class ServerProxy(object):
             headers['Authorization'] = self.auth
             headers['Realm'] = 'ZENIC'
 
-        LOG.info(_LI("ServerProxy: server=%(server)s, port=%(port)d, "
-                     "ssl=%(ssl)r"),
+        LOG.info(("ServerProxy: server=%(server)s, port=%(port)d, "
+                  "ssl=%(ssl)r"),
                  {'server': self.server, 'port': self.port, 'ssl': self.ssl})
-        LOG.info(_LI("ServerProxy: resource=%(resource)s, data=%(data)r, "
-                     "headers=%(headers)r, action=%(action)s"),
-                 {'resource': resource, 'data': data, 'headers': headers,
+        LOG.info(("ServerProxy: resource=%(resource)s, data=%(data)r, "
+                  "action=%(action)s"),
+                 {'resource': resource, 'data': data,
                   'action': action})
 
         conn = None
-        if self.ssl:
-            conn = httplib.HTTPSConnection(
-                self.server, self.port, timeout=self.timeout)
+        if self.ssl and not self.combined_cert:
+            conn = HTTPSConnectionWithValidation(
+                    self.server, self.port, timeout=self.timeout)
             if conn is None:
-                LOG.error(_LE(
+                LOG.error((
                     'ServerProxy: Could not establish HTTPS connection'))
                 return 0, None, None, None
         else:
             conn = httplib.HTTPConnection(
                 self.server, self.port, timeout=self.timeout)
             if conn is None:
-                LOG.error(_LE(
+                LOG.error((
                     'ServerProxy: Could not establish HTTP connection'))
                 return 0, None, None, None
 
@@ -135,15 +221,19 @@ class ServerProxy(object):
                     pass
             ret = (response.status, response.reason, respstr, respdata)
         except socket.timeout as e1:
-            LOG.error(_LE('ServerProxy: %(action)s failure, %(el)r'),
+            LOG.error(('ServerProxy: %(action)s failure, %(el)r'),
                       {"action": action, "el": e1})
             ret = 9, None, None, None
         except socket.error as e:
-            LOG.error(_LE("ServerProxy: %(action)s failure, %(e)r"),
+            LOG.error(("ServerProxy: %(action)s failure, %(e)r"),
                       {"action": action, "e": e})
             ret = 0, None, None, None
         conn.close()
-        # LOG.debug('ServerProxy: status=%d, reason=%r, ret=%s, data=%r' % ret)
+        LOG.info(_("ServerProxy: status=%(status)d, reason=%(reason)r, "
+                   "ret=%(ret)s, data=%(data)r"), {'status': ret[0],
+                                                   'reason': ret[1],
+                                                   'ret': ret[2],
+                                                   'data': ret[3]})
         return ret
 
         """
@@ -207,6 +297,7 @@ class ServerProxy(object):
 
 
 class ServerPool(object):
+
     def __init__(self, servers, auth, ssl, no_ssl_validation, ssl_sticky,
                  ssl_cert_directory, consistency_interval,
                  timeout=False, cache_connections=False,
@@ -251,7 +342,7 @@ class ServerPool(object):
         self.servers = [
             self.server_proxy_for(server, int(port))
             for server, port in (s.rsplit(':', 1) for s in servers)
-            ]
+        ]
         eventlet.spawn(self._consistency_watchdog, self.consistency_interval)
         LOG.debug("ServerPool: initialization done")
 
@@ -296,8 +387,7 @@ class ServerPool(object):
         return combined_cert
 
     def _combine_certs_to_file(self, certs, cfile):
-        """combine_certs_to_file
-
+        """
         Concatenates the contents of each certificate in a list of
         certificate paths to one combined location for use with ssl
         sockets.
@@ -308,7 +398,9 @@ class ServerPool(object):
                     combined.write(cert_handle.read())
 
     def _get_host_cert_path(self, host_dir, server):
-        """returns full path and boolean indicating existence"""
+        """
+        returns full path and boolean indicating existence
+        """
         hcert = os.path.join(host_dir, '%s.pem' % server)
         if os.path.exists(hcert):
             return hcert, True
@@ -319,12 +411,15 @@ class ServerPool(object):
                  for name in [
                      name for (root, dirs, files) in os.walk(ca_dir)
                      for name in files
-                     ]
-                 if name.endswith('.pem')]
+        ]
+            if name.endswith('.pem')]
         return certs
 
     def _fetch_and_store_cert(self, server, port, path):
-        """Grabs a certificate from a server and writes it to a given path."""
+        """
+        Grabs a certificate from a server and writes it to
+        a given path.
+        """
         try:
             cert = ssl.get_server_certificate((server, port))
         except Exception as e:
@@ -333,9 +428,8 @@ class ServerPool(object):
                               'Error details: %(error)s') %
                             {'server': server, 'error': str(e)})
 
-        LOG.warning(_LW("Storing to certificate for host %(server)s "
-                        "at %(path)s") % {'server': server,
-                                          'path': path})
+        LOG.warning("Storing to certificate for host %(server)s "
+                    "at %(path)s" % {'server': server, 'path': path})
         self._file_put_contents(path, cert)
 
         return cert
@@ -387,21 +481,19 @@ class ServerPool(object):
                 return ret
             else:
                 try:
-                    LOG.error(_LE('ServerProxy: %(action)s failure for '
-                                  'servers:%(server)r Response:'
-                                  '%(response)s'),
+                    LOG.error('ServerProxy: %(action)s failure for '
+                              'servers:%(server)r Response: %(response)s',
                               {'action': action,
                                'server': (active_server.server,
                                           active_server.port),
                                'response': unicode(ret[3], "utf-8")})
-                    LOG.error(_LE("ServerProxy: Error details: "
-                                  "status=%(status)d, reason=%(reason)r, "
-                                  "ret=%(ret)s, data=%(data)r"),
+                    LOG.error("ServerProxy: Error details: status=%(status)d,"
+                              " reason=%(reason)r, ret=%(ret)s, data=%(data)r",
                               {'status': ret[0], 'reason': ret[1],
                                'ret': unicode(ret[2], "utf-8"),
                                'data': unicode(ret[3], "utf-8")})
                 except Exception as e:
-                    LOG.error(_LE("fail to display info, err: %(e)s"),
+                    LOG.error("fail to display info, err: %(e)s",
                               {'e': e})
                 active_server.failed = True
 
@@ -415,8 +507,7 @@ class ServerPool(object):
 
     def rest_action(self, action, resource, data='', errstr='%s',
                     ignore_codes=[], headers={}, timeout=False):
-        """rest_action
-
+        """
         Wrapper for rest_call that verifies success and raises a
         RemoteRestError on failure with a provided error string
         By default, 404 errors on DELETE calls are ignored because
@@ -426,15 +517,13 @@ class ServerPool(object):
                     "resource %(resource)s %(data)s"),
                   {'action': action, 'resource': resource, 'data': data})
 
-        if not ignore_codes and action == 'DELETE':
-            ignore_codes = [404]
         resp = self.rest_call(action, resource, data, headers, ignore_codes,
                               timeout)
         if self.server_failure(resp, ignore_codes):
             try:
-                LOG.error(errstr, unicode(resp[2], "utf-8"))
+                LOG.error(errstr, unicode(resp[2], "utf-8"))  # noqa
             except Exception as e:
-                LOG.error(_LE("fail to display info, err: %(e)s"),
+                LOG.error("fail to display info, err: %(e)s",
                           {'e': e})
             raise RemoteRestError(reason=resp[2], status=resp[0])
         if resp[0] in ignore_codes:
@@ -450,6 +539,7 @@ class ServerPool(object):
 
 
 class HTTPSConnectionWithValidation(httplib.HTTPSConnection):
+
     # If combined_cert is None, the connection will continue without
     # any certificate validation.
     combined_cert = None
