@@ -1,0 +1,8 @@
+Code-Review+2: kyle liu <liu.hui58@zte.com.cn>
+Workflow+1: kyle liu <liu.hui58@zte.com.cn>
+Verified+2: Zuul
+Submitted-by: Zuul
+Submitted-at: Tue, 05 Mar 2019 01:33:15 +0000
+Reviewed-on: https://review.openstack.org/640687
+Project: openstack/networking-zte
+Branch: refs/heads/master
